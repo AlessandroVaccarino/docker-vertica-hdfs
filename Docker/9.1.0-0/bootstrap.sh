@@ -6,9 +6,9 @@ echo " -----> Starting and configuring Vertica"
 # Properly shut down Vertica, to avoid inconsistency issues
 function vertica_shut_down() {
   echo " -----> Properly shut down Vertica"
-  /bin/su - dbadmin -c '/opt/vertica/bin/vsql -d database -c "SELECT CLOSE_ALL_SESSIONS();"'
-  /bin/su - dbadmin -c '/opt/vertica/bin/vsql -d database -c "SELECT MAKE_AHM_NOW();"'
-  /bin/su - dbadmin -c '/opt/vertica/bin/admintools -t stop_db -d database -i'
+  su - dbadmin -c '/opt/vertica/bin/vsql -d database -c "SELECT CLOSE_ALL_SESSIONS();"'
+  su - dbadmin -c '/opt/vertica/bin/vsql -d database -c "SELECT MAKE_AHM_NOW();"'
+  su - dbadmin -c '/opt/vertica/bin/admintools -t stop_db -d database -i'
 }
 
 # Intercept closing of container and proper shut down Vertica
@@ -69,6 +69,20 @@ echo " -----> Vertica is now running"
 echo " -----> Starting Vertica Console"
 /etc/init.d/vertica-consoled start
 echo " -----> Vertica Console is now running"
+
+# Grant SSH access to localhost and 0.0.0.0
+ssh -o StrictHostKeyChecking=no localhost 'exit'
+ssh -o StrictHostKeyChecking=no 0.0.0.0 'exit'
+
+# Start Hadoop service
+echo " -----> Starting Hadoop"
+sh /usr/local/hadoop/sbin/start-all.sh
+echo " -----> Started Hadoop"
+
+# Configure Vertica to use HDFS
+su - dbadmin -c "/opt/vertica/bin/vsql -d database -c \"ALTER DATABASE database SET HadoopConfDir = '/usr/local/hadoop/etc/hadoop';\""
+su - dbadmin -c "/opt/vertica/bin/vsql -d database -c \"SELECT CLEAR_HDFS_CACHES();\""
+su - dbadmin -c "/opt/vertica/bin/vsql -d database -c \"SELECT VERIFY_HADOOP_CONF_DIR();\""
 
 # Hang session
 while true; do

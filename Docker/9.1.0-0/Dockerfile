@@ -1,70 +1,63 @@
-FROM ubuntu:14.04
-LABEL maintainer="alessandrov87 (https://github.com/AlessandroVaccarino)"
+FROM alessandrov87/docker-vertica:9.1.0-0
+LABEL  maintainer="alessandrov87 (https://github.com/AlessandroVaccarino)"
 
-ENV VERTICA_VERSION 9.1.0
+ENV HADOOP_VERSION 2.9.0
 
-# Install dev tools
-RUN apt-get update -y \
-&&  apt-get upgrade -y \
-&&  apt-get install -y openssh-server \
-                       openssh-client \
-                       mcelog \
-                       gdb \
-                       sysstat \
-                       dialog \
-                       curl \
-&&  apt-get clean
+# Replace bootstrap with new version
+RUN rm /etc/bootstrap.sh
+COPY bootstrap.sh /etc/
 
-# Set UTF-8 Locale
-RUN locale-gen en_US.UTF-8  
-ENV LANG en_US.UTF-8  
-ENV LANGUAGE en_US:en  
-ENV LC_ALL en_US.UTF-8
+# Create HDFS folder
+RUN mkdir -p /srv/hdfs/datanode && \
+    mkdir -p /srv/hdfs/namenode
 
-# Create Vertica user and set default shell to bash, as required by Vertica
-RUN groupadd -r verticadba \
-&&  useradd -r -m -g verticadba dbadmin \
-&&  chsh -s /bin/bash dbadmin \
-&&  chsh -s /bin/bash root \
-&&  rm /bin/sh \
-&&  ln -s /bin/bash /bin/sh
+# Install SSH Server
+RUN apt-get update && \
+    apt-get install openssh-server
 
-ENV SHELL "/bin/bash"
+# Intall Java
+RUN apt-get update && \
+    apt-get upgrade -y && \
+    apt-get install -y  software-properties-common && \
+    add-apt-repository ppa:webupd8team/java -y && \
+    apt-get update && \
+    echo oracle-java7-installer shared/accepted-oracle-license-v1-1 select true | /usr/bin/debconf-set-selections && \
+    apt-get install -y oracle-java8-installer && \
+    apt-get clean
 
-# Copy Vertica deb installers
-RUN mkdir /srv/setup
-COPY software/vertica-console_9.1.0-0_amd64.deb /srv/setup
-COPY software/vertica_9.1.0-0_amd64.deb /srv/setup
+# Download and extract Hadoop
+RUN wget http://it.apache.contactlab.it/hadoop/common/hadoop-${HADOOP_VERSION}/hadoop-${HADOOP_VERSION}.tar.gz && \
+    tar -xzvf hadoop-${HADOOP_VERSION}.tar.gz && \
+    mv hadoop-2.9.0 /usr/local/hadoop && \
+    rm /hadoop-${HADOOP_VERSION}.tar.gz
 
-# Pre-installation steps
-# Disable Transparent Hugepages
-RUN echo "kernel/mm/transparent_hugepage/enabled = never" >> /etc/sysfs.conf
-# Create Vertica data and Swap folders
-RUN mkdir -p /srv/vertica/db
-RUN mkdir -p /swap
+# Replace Hadoop config
+RUN rm /usr/local/hadoop/etc/hadoop/hadoop-env.sh && \
+    rm /usr/local/hadoop/etc/hadoop/core-site.xml && \
+    rm /usr/local/hadoop/etc/hadoop/hdfs-site.xml
+COPY conf/hadoop-env.sh /usr/local/hadoop/etc/hadoop/
+COPY conf/core-site.xml /usr/local/hadoop/etc/hadoop/
+COPY conf/hdfs-site.xml /usr/local/hadoop/etc/hadoop/
 
-# Install Vertica
-RUN dpkg -i /srv/setup/vertica_9.1.0-0_amd64.deb
-RUN /opt/vertica/sbin/install_vertica \
-        --license CE \
-        --accept-eula \
-        --hosts localhost  \
-        --deb /srv/setup/vertica_9.1.0-0_amd64.deb \
-        --data-dir /srv/vertica/db \
-        --dba-user dbadmin \
-        --failure-threshold NONE
+# ssh without key
+RUN ssh-keygen -t rsa -f ~/.ssh/id_rsa -P '' && \
+    cat ~/.ssh/id_rsa.pub >> ~/.ssh/authorized_keys
+# Add localhost and 0.0.0.0 to known hosts
+RUN ssh-keyscan -H 127.0.0.1 >> ~/.ssh/known_hosts
+RUN ssh-keyscan -H 0.0.0.0 >> ~/.ssh/known_hosts
 
-# Install Vertica Console
-RUN dpkg -i /srv/setup/vertica-console_9.1.0-0_amd64.deb
+# format namenode
+RUN /usr/local/hadoop/bin/hdfs namenode -format
 
-# Remove setup files
-RUN rm /srv/setup/vertica-console_9.1.0-0_amd64.deb
-RUN rm /srv/setup/vertica_9.1.0-0_amd64.deb
-RUN rm -R /srv/setup
-
-# Copy bootstrap.sh file
-COPY bootstrap.sh /etc
+CMD [ "sh", "-c", "service ssh start; bash"]
 
 # Expose ports
+# Vertica Ports
 EXPOSE 5433
 EXPOSE 5450
+# Hadoop Ports
+EXPOSE 9000
+EXPOSE 50070
+EXPOSE 50075
+EXPOSE 50090
+EXPOSE 50105
