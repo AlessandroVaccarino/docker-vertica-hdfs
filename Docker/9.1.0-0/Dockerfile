@@ -6,6 +6,8 @@ ENV HADOOP_VERSION 2.9.0
 # Replace bootstrap with new version
 RUN rm /etc/bootstrap.sh
 COPY bootstrap.sh /etc/
+RUN chown root:root /etc/bootstrap.sh
+RUN chmod 700 /etc/bootstrap.sh
 
 # Create HDFS folder
 RUN mkdir -p /srv/hdfs/datanode && \
