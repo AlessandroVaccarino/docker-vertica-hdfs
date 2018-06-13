@@ -71,6 +71,7 @@ echo " -----> Starting Vertica Console"
 echo " -----> Vertica Console is now running"
 
 # Grant SSH access to localhost and 0.0.0.0
+/etc/init.d/ssh start
 ssh -o StrictHostKeyChecking=no localhost 'exit'
 ssh -o StrictHostKeyChecking=no 0.0.0.0 'exit'
 
